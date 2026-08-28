@@ -131,11 +131,10 @@
                     } catch (e) { ElMessage.error('内核重启请求失败') }
                     restarting.value = false
                 }
-
                 const openZashboard = () => {
                     const ip = window.location.hostname
-                    // 自动携带 hostname 和 secret 登录！
-                    window.open(`http://${ip}:9090/ui/#/?hostname=${ip}&port=9090&secret=123456`, '_blank')
+                    // 修复参数顺序：参数必须在 #/ 之前，Zashboard 才能正确读取
+                    window.open(`http://${ip}:9090/ui/?hostname=${ip}&port=9090&secret=123456#/`, '_blank')
                 }
 
                 onMounted(() => { loadConfig() })
