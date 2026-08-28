@@ -37,7 +37,7 @@ while true; do
             apt install -y curl wget unzip gzip python3 python3-venv python3-pip > /dev/null 2>&1
 
             echo -e "${CYAN}>> 2. 检测架构并部署 Mihomo 内核...${NC}"
-            mkdir -p /etc/mihomo/ui
+            mkdir -p /etc/mihomo/ui /etc/mihomo/providers /etc/mihomo/profiles
             
             # 自动检测 CPU 架构
             ARCH=$(uname -m)
@@ -74,7 +74,7 @@ while true; do
             
             # 生成防崩溃初始配置
             if [ ! -f "/etc/mihomo/config.yaml" ]; then
-                echo -e "port: 7890\nallow-lan: true\nexternal-controller: 0.0.0.0:9090\nsecret: \"123456\"\nexternal-ui: ui" > /etc/mihomo/config.yaml
+                echo -e "port: 7890\nallow-lan: true\ngeodata-mode: true\nexternal-controller: 0.0.0.0:9090\nsecret: \"123456\"\nexternal-ui: ui" > /etc/mihomo/config.yaml
             fi
             
             # 写入内核守护进程
@@ -99,8 +99,23 @@ EOF
 
             echo -e "${CYAN}>> 4. 部署 Zashboard 面板...${NC}"
             wget -O /tmp/zashboard.zip https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip
-            unzip -o /tmp/zashboard.zip -d /etc/mihomo/ui/ > /dev/null 2>&1
-            rm /tmp/zashboard.zip
+            rm -rf /tmp/zashboard-extract
+            mkdir -p /tmp/zashboard-extract
+            unzip -o /tmp/zashboard.zip -d /tmp/zashboard-extract > /dev/null 2>&1
+            rm -rf /etc/mihomo/ui
+            mkdir -p /etc/mihomo/ui
+            if [ -f /tmp/zashboard-extract/dist/index.html ]; then
+                cp -a /tmp/zashboard-extract/dist/. /etc/mihomo/ui/
+            else
+                cp -a /tmp/zashboard-extract/. /etc/mihomo/ui/
+            fi
+            rm -rf /tmp/zashboard-extract
+            rm -f /tmp/zashboard.zip
+
+            if [ ! -f /etc/mihomo/ui/index.html ]; then
+                echo -e "${RED}Zashboard 部署失败：未找到 index.html${NC}"
+                exit 1
+            fi
 
             echo -e "${CYAN}>> 5. 部署 Python 后端控制台...${NC}"
             mkdir -p /opt/mihomo_manager/templates
@@ -118,6 +133,28 @@ pyyaml
 jinja2
 EOF
             ./venv/bin/pip install -r requirements.txt > /dev/null 2>&1
+
+            # 修补旧配置，避免 GEOIP 规则触发 MMDB 下载失败，并确保面板可从局域网访问。
+            ./venv/bin/python - << 'PY'
+from pathlib import Path
+import yaml
+
+path = Path("/etc/mihomo/config.yaml")
+if path.is_file():
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    rules = data.get("rules", [])
+    if any(isinstance(rule, str) and rule.upper().startswith(("GEOIP,", "GEOSITE,")) for rule in rules):
+        data["geodata-mode"] = True
+    controller = str(data.get("external-controller", "0.0.0.0:9090"))
+    try:
+        port = int(controller.rsplit(":", 1)[1])
+    except (IndexError, ValueError):
+        port = 9090
+    data["external-controller"] = f"0.0.0.0:{port}"
+    data["secret"] = str(data.get("secret") or "123456")
+    data["external-ui"] = "ui"
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False, width=120), encoding="utf-8")
+PY
             
             echo -e "${CYAN}>> 6. 从 GitHub 拉取最新后端与 UI 代码...${NC}"
             wget -O /opt/mihomo_manager/main.py "${GITHUB_RAW_URL}/main.py"
