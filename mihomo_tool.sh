@@ -106,8 +106,12 @@ jinja2
 EOF
             ./venv/bin/pip install -r requirements.txt
             
-            echo -e "${GREEN}后端 Python 运行环境准备完毕。${NC}"
-            echo -e "${CYAN}提示：后续我们会将完善好的 main.py 和 index.html 放入 /opt/mihomo_manager/${NC}"
+            # 从你的 GitHub 拉取最新代码
+            echo -e "${CYAN}正在从 GitHub 下载最新版本代码...${NC}"
+            wget -O /opt/mihomo_manager/main.py https://raw.githubusercontent.com/JBl9527/mihomo-ui/main/main.py
+            wget -O /opt/mihomo_manager/templates/index.html https://raw.githubusercontent.com/JBl9527/mihomo-ui/main/templates/index.html
+            
+            echo -e "${GREEN}后端与 UI 部署完毕！可以使用选项 6 启动了。${NC}"
             ;;
         5)
             echo -e "\n${GREEN}[5] 启动/重启 Mihomo 服务...${NC}"
