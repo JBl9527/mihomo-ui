@@ -67,6 +67,11 @@ while true; do
             mv /tmp/mihomo /usr/local/bin/mihomo
             chmod +x /usr/local/bin/mihomo
             
+            echo -e "${CYAN}>> 3. 下载核心 Geo 数据文件 (防止首次启动卡死)...${NC}"
+            # 使用代理加速下载 Geo 数据文件
+            wget -O /etc/mihomo/GeoSite.dat https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat
+            wget -O /etc/mihomo/GeoIP.dat https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat
+            
             # 生成防崩溃初始配置
             if [ ! -f "/etc/mihomo/config.yaml" ]; then
                 echo -e "port: 7890\nallow-lan: true\nexternal-controller: 0.0.0.0:9090\nsecret: \"123456\"\nexternal-ui: ui" > /etc/mihomo/config.yaml
@@ -92,12 +97,12 @@ ExecReload=/bin/kill -HUP $MAINPID
 WantedBy=multi-user.target
 EOF
 
-            echo -e "${CYAN}>> 3. 部署 Zashboard 面板...${NC}"
+            echo -e "${CYAN}>> 4. 部署 Zashboard 面板...${NC}"
             wget -O /tmp/zashboard.zip https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip
             unzip -o /tmp/zashboard.zip -d /etc/mihomo/ui/ > /dev/null 2>&1
             rm /tmp/zashboard.zip
 
-            echo -e "${CYAN}>> 4. 部署 Python 后端控制台...${NC}"
+            echo -e "${CYAN}>> 5. 部署 Python 后端控制台...${NC}"
             mkdir -p /opt/mihomo_manager/templates
             cd /opt/mihomo_manager
             
@@ -114,7 +119,7 @@ jinja2
 EOF
             ./venv/bin/pip install -r requirements.txt > /dev/null 2>&1
             
-            echo -e "${CYAN}>> 5. 从 GitHub 拉取最新后端与 UI 代码...${NC}"
+            echo -e "${CYAN}>> 6. 从 GitHub 拉取最新后端与 UI 代码...${NC}"
             wget -O /opt/mihomo_manager/main.py "${GITHUB_RAW_URL}/main.py"
             wget -O /opt/mihomo_manager/templates/index.html "${GITHUB_RAW_URL}/templates/index.html"
             
@@ -134,10 +139,11 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-            echo -e "${CYAN}>> 6. 启动并注册服务...${NC}"
+            echo -e "${CYAN}>> 7. 启动并注册服务...${NC}"
             systemctl daemon-reload
             systemctl enable --now mihomo > /dev/null 2>&1
             systemctl enable --now mihomo-web > /dev/null 2>&1
+            systemctl restart mihomo
             systemctl restart mihomo-web
             
             echo -e "${GREEN}=========================================${NC}"
