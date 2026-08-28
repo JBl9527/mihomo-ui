@@ -3,145 +3,393 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mihomo Web 控制台 V2</title>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <title>Mihomo 配置管理</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
     <script src="https://unpkg.com/element-plus"></script>
     <style>
-        body { background-color: #1e1e1e; color: #d4d4d4; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 0; padding: 20px; }
-        .container { max-width: 1000px; margin: 0 auto; }
-        .el-card, .el-tabs--border-card { background-color: #252526; border: 1px solid #3e3e42; color: #d4d4d4; margin-bottom: 20px; }
-        .el-card__header { border-bottom: 1px solid #3e3e42; }
-        .header-flex { display: flex; justify-content: space-between; align-items: center; }
-        .title { margin: 0; font-size: 1.2rem; font-weight: bold; color: #4fc08d; }
-        /* 覆盖 Element UI 暗黑样式 */
-        .el-input__wrapper, .el-textarea__inner { background-color: #1e1e1e; box-shadow: none !important; border: 1px solid #555; color: #fff; }
-        .el-form-item__label, .el-tabs__item { color: #d4d4d4 !important; }
-        .el-tabs__item.is-active { color: #4fc08d !important; background-color: #1e1e1e !important;}
-        .el-textarea__inner { color: #ce9178; font-family: monospace; font-size: 14px;}
+        :root {
+            color-scheme: dark;
+            --page: #111315;
+            --panel: #1a1d20;
+            --panel-alt: #22262a;
+            --line: #343a40;
+            --text: #edf0f2;
+            --muted: #9aa2a9;
+            --accent: #25a86b;
+            --danger: #df5d62;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--page); color: var(--text); font-family: Inter, "Microsoft YaHei", sans-serif; }
+        button, input, textarea { letter-spacing: 0; }
+        .app-shell { min-height: 100vh; }
+        .topbar { height: 66px; border-bottom: 1px solid var(--line); background: #17191b; }
+        .topbar-inner { max-width: 1280px; height: 100%; margin: 0 auto; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+        .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .brand-mark { width: 32px; height: 32px; display: grid; place-items: center; background: var(--accent); color: #07150e; font-weight: 800; border-radius: 6px; }
+        .brand h1 { margin: 0; font-size: 18px; letter-spacing: 0; white-space: nowrap; }
+        .header-actions { display: flex; align-items: center; gap: 10px; }
+        .status-line { display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 13px; }
+        .status-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #697078; }
+        .dot.ok { background: #36c27d; box-shadow: 0 0 0 3px rgba(54,194,125,.12); }
+        .workspace { max-width: 1280px; margin: 0 auto; padding: 22px; display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 18px; }
+        .panel { min-width: 0; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; overflow: hidden; }
+        .panel-head { min-height: 58px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
+        .panel-title { margin: 0; font-size: 15px; font-weight: 650; }
+        .panel-subtitle { margin-top: 3px; color: var(--muted); font-size: 12px; }
+        .import-actions { padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-bottom: 1px solid var(--line); }
+        .profile-list { height: calc(100vh - 216px); min-height: 420px; overflow-y: auto; padding: 8px; }
+        .profile-empty { padding: 48px 16px; color: var(--muted); text-align: center; font-size: 14px; }
+        .profile-row { width: 100%; min-height: 72px; padding: 11px 12px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text); text-align: left; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; }
+        .profile-row:hover { background: var(--panel-alt); }
+        .profile-row.selected { border-color: #46745f; background: #1d2b24; }
+        .profile-main { min-width: 0; }
+        .profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+        .profile-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+        .active-label { padding: 2px 6px; border: 1px solid #337a58; color: #5ed498; border-radius: 3px; }
+        .source-label { text-transform: uppercase; }
+        .editor-panel { display: flex; flex-direction: column; min-height: calc(100vh - 110px); }
+        .editor-head-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .editor-body { flex: 1; min-height: 0; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+        .name-row { display: grid; grid-template-columns: minmax(180px, 360px) 1fr; gap: 12px; align-items: center; }
+        .editor-wrap { flex: 1; min-height: 520px; }
+        .editor-wrap .el-textarea, .editor-wrap .el-textarea__inner { height: 100%; }
+        .editor-wrap .el-textarea__inner { resize: none; font-family: "Cascadia Mono", Consolas, monospace; font-size: 13px; line-height: 1.55; color: #d8e3dc; }
+        .empty-editor { height: 100%; min-height: 520px; display: grid; place-items: center; color: var(--muted); }
+        .dialog-note { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+        .file-picker { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .file-name { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .el-button { border-radius: 4px; }
+        .el-input__wrapper, .el-textarea__inner { background: #141719 !important; box-shadow: 0 0 0 1px var(--line) inset !important; color: var(--text) !important; }
+        .el-dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+        .el-dialog__title, .el-form-item__label { color: var(--text) !important; }
+        .el-overlay { background: rgba(0,0,0,.68); }
+        @media (max-width: 860px) {
+            .topbar { height: auto; }
+            .topbar-inner { padding: 12px 14px; align-items: flex-start; }
+            .status-line { display: none; }
+            .header-actions { flex-wrap: wrap; justify-content: flex-end; }
+            .workspace { padding: 12px; grid-template-columns: 1fr; }
+            .profile-list { height: auto; min-height: 0; max-height: 310px; }
+            .editor-panel { min-height: 680px; }
+            .panel-head { align-items: flex-start; }
+            .name-row { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 560px) {
+            .brand h1 { font-size: 15px; }
+            .brand-mark { display: none; }
+            .topbar-inner { gap: 8px; }
+            .header-actions .el-button { padding-left: 10px; padding-right: 10px; }
+            .editor-head-actions { width: 100%; justify-content: flex-start; }
+            .panel-head { flex-wrap: wrap; }
+            .import-actions { grid-template-columns: 1fr; }
+            .editor-wrap { min-height: 430px; }
+        }
     </style>
 </head>
 <body>
-    <div id="app" class="container">
-        <el-card>
-            <template #header>
-                <div class="header-flex">
-                    <h2 class="title">🚀 Mihomo 配置管理</h2>
-                    <div>
-                        <el-button type="success" @click="openZashboard">打开 Zashboard 面板</el-button>
-                        <el-button type="danger" @click="restartMihomo" :loading="restarting">重启内核</el-button>
-                    </div>
+<div id="app" class="app-shell">
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand">
+                <div class="brand-mark">M</div>
+                <h1>Mihomo 配置管理</h1>
+            </div>
+            <div class="header-actions">
+                <div class="status-line">
+                    <span class="status-item"><i class="dot" :class="{ok: status.service_active}"></i>内核</span>
+                    <span class="status-item"><i class="dot" :class="{ok: status.api_ready}"></i>控制器 API</span>
+                    <span v-if="status.api_ready" class="status-item">{{ status.proxies }} 个节点/策略</span>
                 </div>
-            </template>
-            
-            <el-tabs type="border-card" v-model="activeTab">
-                <!-- 模式 1：机场订阅 -->
-                <el-tab-pane label="🔗 极简机场订阅" name="sub">
-                    <el-form label-width="120px" @submit.prevent>
-                        <el-form-item label="机场订阅链接">
-                            <el-input v-model="subUrl" placeholder="请输入你的机场订阅 URL" clearable></el-input>
-                        </el-form-item>
-                        <el-form-item>
-                            <el-button type="primary" @click="updateSub" :loading="updating">注入模板</el-button>
-                            <span style="margin-left:15px; color:#888; font-size:13px;">（生成后请点击右上方“重启内核”）</span>
-                        </el-form-item>
-                    </el-form>
-                </el-tab-pane>
+                <el-button @click="loadAll" :loading="loading">刷新</el-button>
+                <el-button type="success" @click="openZashboard" :disabled="!status.api_ready || !status.ui_ready">打开 Zashboard</el-button>
+                <el-button type="primary" plain @click="restartMihomo" :loading="restarting">重启内核</el-button>
+            </div>
+        </div>
+    </header>
 
-                <!-- 模式 2：手动 YAML -->
-                <el-tab-pane label="📝 手动 YAML 配置" name="raw">
-                    <div style="margin-bottom: 10px; color: #aaa; font-size: 14px;">将你备份的完整 config.yaml 内容粘贴在下方，点击保存。</div>
-                    <el-input type="textarea" :rows="15" v-model="rawYaml" placeholder="在此粘贴完整的 yaml 内容..."></el-input>
-                    <div style="margin-top: 15px;">
-                        <el-button type="primary" @click="saveRawYaml" :loading="updating">💾 覆盖保存此配置</el-button>
-                    </div>
-                </el-tab-pane>
-            </el-tabs>
-        </el-card>
-
-        <el-card>
-            <template #header>
-                <div class="header-flex">
-                    <span>当前系统中运行的 /etc/mihomo/config.yaml</span>
-                    <el-button size="small" type="info" @click="loadConfig">刷新预览</el-button>
+    <main class="workspace">
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">配置文件</h2>
+                    <div class="panel-subtitle">{{ profiles.length }} 个配置</div>
                 </div>
-            </template>
-            <el-input type="textarea" :rows="22" v-model="configText" readonly></el-input>
-        </el-card>
-    </div>
+            </div>
+            <div class="import-actions">
+                <el-button type="primary" @click="subDialog = true">导入订阅</el-button>
+                <el-button @click="yamlDialog = true">导入 YAML</el-button>
+            </div>
+            <div class="profile-list" v-loading="loading">
+                <button v-for="item in profiles" :key="item.id" class="profile-row" :class="{selected: selectedId === item.id}" @click="selectProfile(item.id)">
+                    <span class="profile-main">
+                        <span class="profile-name">{{ item.name }}</span>
+                        <span class="profile-meta">
+                            <span class="source-label">{{ item.source === 'subscription' ? '订阅' : 'YAML' }}</span>
+                            <span>{{ formatSize(item.size) }}</span>
+                        </span>
+                    </span>
+                    <span v-if="item.active" class="active-label">运行中</span>
+                </button>
+                <div v-if="!loading && !profiles.length" class="profile-empty">还没有配置，请导入订阅或 YAML 文件。</div>
+            </div>
+        </section>
 
-    <script>
-        const { createApp, ref, onMounted } = Vue
-        const { ElMessage } = ElementPlus
+        <section class="panel editor-panel">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">配置编辑</h2>
+                    <div class="panel-subtitle" v-if="selectedProfile">ID: {{ selectedProfile.id }}</div>
+                </div>
+                <div class="editor-head-actions" v-if="selectedProfile">
+                    <el-button type="success" plain @click="activateSelected" :disabled="selectedProfile.active" :loading="activating">切换到此配置</el-button>
+                    <el-button type="primary" @click="saveSelected" :loading="saving">保存修改</el-button>
+                    <el-button type="danger" plain @click="deleteSelected" :disabled="selectedProfile.active">删除</el-button>
+                </div>
+            </div>
+            <div class="editor-body" v-if="selectedProfile">
+                <div class="name-row">
+                    <el-input v-model="editorName" maxlength="80" placeholder="配置名称"></el-input>
+                    <span class="panel-subtitle">保存前会进行 YAML 和 Mihomo 内核校验；运行中配置保存后自动重启。</span>
+                </div>
+                <div class="editor-wrap">
+                    <el-input type="textarea" v-model="editorYaml" spellcheck="false"></el-input>
+                </div>
+            </div>
+            <div v-else class="empty-editor">从左侧选择一个配置进行查看或修改。</div>
+        </section>
+    </main>
 
-        createApp({
-            setup() {
-                const activeTab = ref('sub')
-                const subUrl = ref('')
-                const rawYaml = ref('')
-                const configText = ref('')
-                const restarting = ref(false)
-                const updating = ref(false)
+    <el-dialog v-model="subDialog" title="导入机场订阅" width="min(520px, 92vw)" destroy-on-close>
+        <el-form label-position="top">
+            <el-form-item label="配置名称">
+                <el-input v-model="subForm.name" placeholder="例如：日常机场"></el-input>
+            </el-form-item>
+            <el-form-item label="订阅链接">
+                <el-input v-model="subForm.url" type="textarea" :rows="3" placeholder="https://..."></el-input>
+            </el-form-item>
+            <el-checkbox v-model="subForm.activate">导入后立即切换并重启</el-checkbox>
+        </el-form>
+        <template #footer>
+            <el-button @click="subDialog = false">取消</el-button>
+            <el-button type="primary" @click="importSubscription" :loading="importing">导入</el-button>
+        </template>
+    </el-dialog>
 
-                const loadConfig = async () => {
-                    try {
-                        const res = await fetch('/api/config')
-                        const data = await res.json()
-                        configText.value = data.config
-                        rawYaml.value = data.config // 把当前配置顺便同步到输入框里
-                    } catch (e) {
-                        ElMessage.error('无法读取配置文件')
-                    }
-                }
+    <el-dialog v-model="yamlDialog" title="导入 YAML 配置" width="min(720px, 94vw)" destroy-on-close>
+        <p class="dialog-note">选择本地 YAML 文件，或直接粘贴完整配置。控制器与面板所需字段会自动补齐。</p>
+        <el-form label-position="top">
+            <el-form-item label="配置名称">
+                <el-input v-model="yamlForm.name" placeholder="例如：备用配置"></el-input>
+            </el-form-item>
+            <div class="file-picker">
+                <el-button @click="$refs.yamlFile.click()">选择文件</el-button>
+                <input ref="yamlFile" type="file" accept=".yaml,.yml,text/yaml" hidden @change="readYamlFile">
+                <span class="file-name">{{ yamlForm.fileName || '未选择文件' }}</span>
+            </div>
+            <el-form-item label="YAML 内容">
+                <el-input v-model="yamlForm.content" type="textarea" :rows="14" spellcheck="false"></el-input>
+            </el-form-item>
+            <el-checkbox v-model="yamlForm.activate">导入后立即切换并重启</el-checkbox>
+        </el-form>
+        <template #footer>
+            <el-button @click="yamlDialog = false">取消</el-button>
+            <el-button type="primary" @click="importYaml" :loading="importing">导入</el-button>
+        </template>
+    </el-dialog>
+</div>
 
-                const updateSub = async () => {
-                    if (!subUrl.value) return ElMessage.warning('请输入订阅链接！')
-                    updating.value = true
-                    try {
-                        const res = await fetch('/api/update_sub', {
-                            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({sub_url: subUrl.value})
-                        })
-                        const data = await res.json()
-                        ElMessage({ message: data.msg, type: data.status })
-                        if (data.status === 'success') await loadConfig()
-                    } catch (e) { ElMessage.error('请求失败') }
-                    updating.value = false
-                }
+<script>
+    const { createApp, ref, reactive, computed, onMounted } = Vue
+    const { ElMessage, ElMessageBox } = ElementPlus
 
-                const saveRawYaml = async () => {
-                    if (!rawYaml.value) return ElMessage.warning('YAML 内容不能为空！')
-                    updating.value = true
-                    try {
-                        const res = await fetch('/api/save_raw', {
-                            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({raw_yaml: rawYaml.value})
-                        })
-                        const data = await res.json()
-                        ElMessage({ message: data.msg, type: data.status })
-                        if (data.status === 'success') await loadConfig()
-                    } catch (e) { ElMessage.error('请求失败') }
-                    updating.value = false
-                }
+    createApp({
+        setup() {
+            const profiles = ref([])
+            const selectedId = ref('')
+            const selectedProfile = ref(null)
+            const editorName = ref('')
+            const editorYaml = ref('')
+            const status = reactive({ service_active: false, api_ready: false, ui_ready: false, controller_port: 9090, secret: '', proxies: 0 })
+            const loading = ref(false)
+            const importing = ref(false)
+            const saving = ref(false)
+            const activating = ref(false)
+            const restarting = ref(false)
+            const subDialog = ref(false)
+            const yamlDialog = ref(false)
+            const subForm = reactive({ name: '', url: '', activate: true })
+            const yamlForm = reactive({ name: '', content: '', fileName: '', activate: true })
 
-                const restartMihomo = async () => {
-                    restarting.value = true
-                    try {
-                        const res = await fetch('/api/restart', { method: 'POST' })
-                        const data = await res.json()
-                        ElMessage({ message: data.msg, type: data.status })
-                    } catch (e) { ElMessage.error('内核重启请求失败') }
-                    restarting.value = false
-                }
-                const openZashboard = () => {
-                    const ip = window.location.hostname
-                    // 修复参数顺序：参数必须在 #/ 之前，Zashboard 才能正确读取
-                    window.open(`http://${ip}:9090/ui/?hostname=${ip}&port=9090&secret=123456#/`, '_blank')
-                }
-
-                onMounted(() => { loadConfig() })
-
-                return { activeTab, subUrl, rawYaml, configText, restarting, updating, updateSub, saveRawYaml, restartMihomo, loadConfig, openZashboard }
+            const api = async (url, options = {}) => {
+                const response = await fetch(url, options)
+                let data = {}
+                try { data = await response.json() } catch (_) {}
+                if (!response.ok) throw new Error(data.detail || `请求失败 (${response.status})`)
+                return data
             }
-        }).use(ElementPlus).mount('#app')
-    </script>
+
+            const jsonOptions = (method, body) => ({
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            })
+
+            const loadStatus = async () => {
+                try { Object.assign(status, await api('/api/status')) }
+                catch (error) { ElMessage.error(error.message) }
+            }
+
+            const loadProfiles = async (preferredId = selectedId.value) => {
+                const data = await api('/api/profiles')
+                profiles.value = data.profiles
+                const exists = profiles.value.some(item => item.id === preferredId)
+                const nextId = exists ? preferredId : (data.active_id || profiles.value[0]?.id || '')
+                if (nextId) await selectProfile(nextId)
+                else {
+                    selectedId.value = ''
+                    selectedProfile.value = null
+                }
+            }
+
+            const selectProfile = async (id) => {
+                selectedId.value = id
+                try {
+                    const data = await api(`/api/profiles/${id}`)
+                    selectedProfile.value = data
+                    editorName.value = data.name
+                    editorYaml.value = data.config
+                } catch (error) { ElMessage.error(error.message) }
+            }
+
+            const loadAll = async () => {
+                loading.value = true
+                try { await Promise.all([loadProfiles(), loadStatus()]) }
+                catch (error) { ElMessage.error(error.message) }
+                finally { loading.value = false }
+            }
+
+            const importSubscription = async () => {
+                if (!subForm.name.trim() || !subForm.url.trim()) return ElMessage.warning('请填写配置名称和订阅链接')
+                importing.value = true
+                try {
+                    const data = await api('/api/profiles/subscription', jsonOptions('POST', {
+                        name: subForm.name,
+                        sub_url: subForm.url,
+                        activate: subForm.activate
+                    }))
+                    ElMessage.success(data.msg)
+                    subDialog.value = false
+                    subForm.name = ''
+                    subForm.url = ''
+                    await loadProfiles(data.id)
+                    await loadStatus()
+                } catch (error) { ElMessage.error(error.message) }
+                finally { importing.value = false }
+            }
+
+            const readYamlFile = async (event) => {
+                const file = event.target.files?.[0]
+                if (!file) return
+                yamlForm.fileName = file.name
+                yamlForm.content = await file.text()
+                if (!yamlForm.name) yamlForm.name = file.name.replace(/\.ya?ml$/i, '')
+                event.target.value = ''
+            }
+
+            const importYaml = async () => {
+                if (!yamlForm.name.trim() || !yamlForm.content.trim()) return ElMessage.warning('请填写配置名称并选择或粘贴 YAML')
+                importing.value = true
+                try {
+                    const data = await api('/api/profiles/yaml', jsonOptions('POST', {
+                        name: yamlForm.name,
+                        raw_yaml: yamlForm.content,
+                        activate: yamlForm.activate
+                    }))
+                    ElMessage.success(data.msg)
+                    yamlDialog.value = false
+                    yamlForm.name = ''
+                    yamlForm.content = ''
+                    yamlForm.fileName = ''
+                    await loadProfiles(data.id)
+                    await loadStatus()
+                } catch (error) { ElMessage.error(error.message) }
+                finally { importing.value = false }
+            }
+
+            const saveSelected = async () => {
+                if (!selectedProfile.value) return
+                saving.value = true
+                try {
+                    const data = await api(`/api/profiles/${selectedId.value}`, jsonOptions('PUT', {
+                        name: editorName.value,
+                        raw_yaml: editorYaml.value
+                    }))
+                    ElMessage.success(data.msg)
+                    await loadProfiles(selectedId.value)
+                    await loadStatus()
+                } catch (error) { ElMessage.error(error.message) }
+                finally { saving.value = false }
+            }
+
+            const activateSelected = async () => {
+                if (!selectedProfile.value) return
+                activating.value = true
+                try {
+                    const data = await api(`/api/profiles/${selectedId.value}/activate`, { method: 'POST' })
+                    ElMessage.success(data.msg)
+                    await loadProfiles(selectedId.value)
+                    await loadStatus()
+                } catch (error) { ElMessage.error(error.message) }
+                finally { activating.value = false }
+            }
+
+            const deleteSelected = async () => {
+                if (!selectedProfile.value) return
+                try {
+                    await ElMessageBox.confirm(`确定删除“${selectedProfile.value.name}”吗？`, '删除配置', { type: 'warning' })
+                    const data = await api(`/api/profiles/${selectedId.value}`, { method: 'DELETE' })
+                    ElMessage.success(data.msg)
+                    selectedId.value = ''
+                    selectedProfile.value = null
+                    await loadProfiles()
+                } catch (error) {
+                    if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || String(error))
+                }
+            }
+
+            const restartMihomo = async () => {
+                restarting.value = true
+                try {
+                    const data = await api('/api/restart', { method: 'POST' })
+                    ElMessage.success(data.msg)
+                    await loadStatus()
+                } catch (error) { ElMessage.error(error.message) }
+                finally { restarting.value = false }
+            }
+
+            const openZashboard = () => {
+                const host = window.location.hostname
+                const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
+                const query = new URLSearchParams({ hostname: host, port: String(status.controller_port), secret: status.secret || '' })
+                window.open(`${protocol}//${host}:${status.controller_port}/ui/?${query.toString()}#/`, '_blank', 'noopener')
+            }
+
+            const formatSize = (bytes) => bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
+
+            onMounted(loadAll)
+
+            return {
+                profiles, selectedId, selectedProfile, editorName, editorYaml, status,
+                loading, importing, saving, activating, restarting,
+                subDialog, yamlDialog, subForm, yamlForm,
+                loadAll, selectProfile, importSubscription, readYamlFile, importYaml,
+                saveSelected, activateSelected, deleteSelected, restartMihomo,
+                openZashboard, formatSize
+            }
+        }
+    }).use(ElementPlus).mount('#app')
+</script>
 </body>
 </html>
