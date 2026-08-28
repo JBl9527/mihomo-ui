@@ -122,16 +122,14 @@ EOF
             ;;
         2)
             echo -e "\n${GREEN}[2] 正在从 GitHub 拉取最新脚本...${NC}"
-            # 自动获取当前执行的脚本路径
-            SCRIPT_PATH=$(readlink -f "$0")
-            
-            # 覆盖下载
+            # 固定脚本保存路径，解决 pipe 执行时找不到文件的问题
+            SCRIPT_PATH="/root/mihomo_tool.sh"
             wget -O "$SCRIPT_PATH" "${GITHUB_RAW_URL}/mihomo_tool.sh"
             chmod +x "$SCRIPT_PATH"
             
-            echo -e "${GREEN}✅ 脚本更新完毕！正在自动重启脚本...${NC}"
+            echo -e "${GREEN}✅ 脚本已更新并永久保存至 $SCRIPT_PATH！正在重启脚本...${NC}"
             sleep 1
-            # 使用 exec 完美重启脚本当前进程
+            # 重新执行真实路径下的脚本
             exec bash "$SCRIPT_PATH"
             ;;
         0)
