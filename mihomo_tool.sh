@@ -14,7 +14,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 定义 GitHub Raw 基础路径 (指向你的仓库)
+# 定义 GitHub Raw 基础路径
 GITHUB_RAW_URL="https://raw.githubusercontent.com/JBl9527/mihomo-ui/main"
 
 while true; do
@@ -35,18 +35,43 @@ while true; do
             apt update -y > /dev/null 2>&1
             apt install -y curl wget unzip gzip python3 python3-venv python3-pip > /dev/null 2>&1
 
-            echo -e "${CYAN}>> 2. 部署 Mihomo 内核...${NC}"
+            echo -e "${CYAN}>> 2. 检测架构并部署 Mihomo 内核...${NC}"
             mkdir -p /etc/mihomo/ui
-            wget -O /tmp/mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-amd64-compatible-v1.18.7.gz
+            
+            # 自动检测 CPU 架构
+            ARCH=$(uname -m)
+            echo -e "${CYAN}当前系统架构识别为: $ARCH${NC}"
+            case "$ARCH" in
+                x86_64)
+                    MIHOMO_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-amd64-compatible-v1.18.7.gz"
+                    echo -e "${GREEN}-> 将下载 AMD64 版本内核${NC}"
+                    ;;
+                aarch64 | arm64)
+                    MIHOMO_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-arm64-v1.18.7.gz"
+                    echo -e "${GREEN}-> 将下载 ARM64 版本内核${NC}"
+                    ;;
+                armv7l | armv8l)
+                    MIHOMO_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.18.7/mihomo-linux-armv7-v1.18.7.gz"
+                    echo -e "${GREEN}-> 将下载 ARMv7 版本内核${NC}"
+                    ;;
+                *)
+                    echo -e "${RED}不支持的 CPU 架构: $ARCH，暂无法一键安装。${NC}"
+                    exit 1
+                    ;;
+            esac
+
+            # 下载并替换内核
+            wget -O /tmp/mihomo.gz "$MIHOMO_URL"
             gunzip -f /tmp/mihomo.gz
             mv /tmp/mihomo /usr/local/bin/mihomo
             chmod +x /usr/local/bin/mihomo
             
-            # 生成防崩溃初始配置 (如果不存在)
+            # 生成防崩溃初始配置
             if [ ! -f "/etc/mihomo/config.yaml" ]; then
                 echo -e "port: 7890\nallow-lan: true\nexternal-controller: 0.0.0.0:9090\nsecret: \"123456\"\nexternal-ui: ui" > /etc/mihomo/config.yaml
             fi
             
+            # 写入内核守护进程
             cat << 'EOF' > /etc/systemd/system/mihomo.service
 [Unit]
 Description=Mihomo Daemon
@@ -75,7 +100,6 @@ EOF
             mkdir -p /opt/mihomo_manager/templates
             cd /opt/mihomo_manager
             
-            # 如果没有 venv 环境则创建
             if [ ! -d "venv" ]; then
                 python3 -m venv venv
             fi
@@ -122,14 +146,12 @@ EOF
             ;;
         2)
             echo -e "\n${GREEN}[2] 正在从 GitHub 拉取最新脚本...${NC}"
-            # 固定脚本保存路径，解决 pipe 执行时找不到文件的问题
             SCRIPT_PATH="/root/mihomo_tool.sh"
             wget -O "$SCRIPT_PATH" "${GITHUB_RAW_URL}/mihomo_tool.sh"
             chmod +x "$SCRIPT_PATH"
             
-            echo -e "${GREEN}✅ 脚本已更新并永久保存至 $SCRIPT_PATH！正在重启脚本...${NC}"
+            echo -e "${GREEN}✅ 脚本已更新！正在重启脚本...${NC}"
             sleep 1
-            # 重新执行真实路径下的脚本
             exec bash "$SCRIPT_PATH"
             ;;
         0)
