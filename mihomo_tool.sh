@@ -23,9 +23,10 @@ while true; do
     echo -e "${CYAN}=================================================${NC}"
     echo -e "  ${YELLOW}1.${NC} 一键安装/覆盖更新 Mihomo-UI 完整环境"
     echo -e "  ${YELLOW}2.${NC} 更新本管理脚本 (自动拉取最新 mihomo_tool.sh)"
+    echo -e "  ${YELLOW}3.${NC} 完全卸载 (清理所有相关文件与服务)"
     echo -e "  ${YELLOW}0.${NC} 退出脚本"
     echo -e "${CYAN}=================================================${NC}"
-    read -p "请输入选项 [0-2]: " choice
+    read -p "请输入选项 [0-3]: " choice
 
     case $choice in
         1)
@@ -154,12 +155,35 @@ EOF
             sleep 1
             exec bash "$SCRIPT_PATH"
             ;;
+        3)
+            echo -e "\n${RED}⚠️ 警告：此操作将完全卸载 Mihomo 内核及 Web 面板，并删除所有相关配置文件！${NC}"
+            read -p "确定要继续卸载吗？(y/n): " confirm
+            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                echo -e "${CYAN}>> 1. 停止并禁用后台服务...${NC}"
+                systemctl stop mihomo mihomo-web > /dev/null 2>&1 || true
+                systemctl disable mihomo mihomo-web > /dev/null 2>&1 || true
+                
+                echo -e "${CYAN}>> 2. 删除系统服务文件...${NC}"
+                rm -f /etc/systemd/system/mihomo.service
+                rm -f /etc/systemd/system/mihomo-web.service
+                systemctl daemon-reload
+                
+                echo -e "${CYAN}>> 3. 删除可执行文件与目录...${NC}"
+                rm -f /usr/local/bin/mihomo
+                rm -rf /etc/mihomo
+                rm -rf /opt/mihomo_manager
+                
+                echo -e "${GREEN}✅ 卸载完毕！系统已恢复纯净状态。${NC}"
+            else
+                echo -e "${YELLOW}已取消卸载操作。${NC}"
+            fi
+            ;;
         0)
             echo -e "${GREEN}退出脚本，感谢使用！${NC}"
             exit 0
             ;;
         *)
-            echo -e "${RED}无效选项，请输入 0-2 之间的数字。${NC}"
+            echo -e "${RED}无效选项，请输入 0-3 之间的数字。${NC}"
             ;;
     esac
     
