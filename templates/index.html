@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mihomo Web 路由控制台</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <script src="https://unpkg.com/element-plus"></script>
+    <style>
+        body { background-color: #1e1e1e; color: #d4d4d4; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .el-card { background-color: #252526; border: 1px solid #3e3e42; color: #d4d4d4; margin-bottom: 20px; }
+        .el-card__header { border-bottom: 1px solid #3e3e42; }
+        .header-flex { display: flex; justify-content: space-between; align-items: center; }
+        .title { margin: 0; font-size: 1.2rem; font-weight: bold; color: #4fc08d; }
+        /* 覆盖 Element 默认样式以适配暗黑主题 */
+        .el-input__wrapper { background-color: #3c3c3c; box-shadow: none !important; border: 1px solid #555; }
+        .el-input__inner { color: #fff; }
+        .el-form-item__label { color: #d4d4d4; }
+        .el-textarea__inner { background-color: #1e1e1e; color: #ce9178; border: 1px solid #3e3e42; font-family: monospace; font-size: 14px;}
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <el-card>
+            <template #header>
+                <div class="header-flex">
+                    <h2 class="title">🚀 Mihomo 节点订阅与内核管理</h2>
+                    <div>
+                        <el-button type="success" @click="openZashboard">打开 Zashboard 面板</el-button>
+                        <el-button type="danger" @click="restartMihomo" :loading="restarting">重启内核</el-button>
+                    </div>
+                </div>
+            </template>
+            
+            <el-form label-width="120px" @submit.prevent>
+                <el-form-item label="机场订阅链接">
+                    <el-input v-model="subUrl" placeholder="请输入你的机场订阅 URL" clearable></el-input>
+                </el-form-item>
+                <el-form-item>
+                    <el-button type="primary" @click="updateSub" :loading="updating">注入模板并生成配置</el-button>
+                </el-form-item>
+            </el-form>
+        </el-card>
+
+        <el-card>
+            <template #header>
+                <div class="header-flex">
+                    <span>当前 /etc/mihomo/config.yaml 预览</span>
+                    <el-button size="small" type="info" @click="loadConfig">刷新预览</el-button>
+                </div>
+            </template>
+            <el-input type="textarea" :rows="22" v-model="configText" readonly></el-input>
+        </el-card>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue
+        const { ElMessage } = ElementPlus
+
+        createApp({
+            setup() {
+                const subUrl = ref('')
+                const configText = ref('')
+                const restarting = ref(false)
+                const updating = ref(false)
+
+                const loadConfig = async () => {
+                    try {
+                        const res = await fetch('/api/config')
+                        const data = await res.json()
+                        configText.value = data.config
+                    } catch (e) {
+                        ElMessage.error('无法读取配置文件')
+                    }
+                }
+
+                const updateSub = async () => {
+                    if (!subUrl.value) {
+                        ElMessage.warning('请先输入订阅链接！')
+                        return
+                    }
+                    updating.value = true
+                    try {
+                        const res = await fetch('/api/update_sub', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({sub_url: subUrl.value})
+                        })
+                        const data = await res.json()
+                        ElMessage({ message: data.msg, type: data.status })
+                        if (data.status === 'success') {
+                            await loadConfig() // 自动刷新下面的预览框
+                        }
+                    } catch (e) {
+                        ElMessage.error('请求失败，请检查后端运行状态')
+                    }
+                    updating.value = false
+                }
+
+                const restartMihomo = async () => {
+                    restarting.value = true
+                    try {
+                        const res = await fetch('/api/restart', { method: 'POST' })
+                        const data = await res.json()
+                        ElMessage({ message: data.msg, type: data.status })
+                    } catch (e) {
+                        ElMessage.error('内核重启请求失败')
+                    }
+                    restarting.value = false
+                }
+
+                const openZashboard = () => {
+                    const ip = window.location.hostname
+                    window.open(`http://${ip}:9090/ui/`, '_blank')
+                }
+
+                onMounted(() => { loadConfig() })
+
+                return { subUrl, configText, restarting, updating, updateSub, restartMihomo, loadConfig, openZashboard }
+            }
+        }).use(ElementPlus).mount('#app')
+    </script>
+</body>
+</html>
