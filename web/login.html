@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>登录 · Mihomo 控制台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070A0F'/%3E%3Cpath d='M6 21c4 0 5-10 10-10s6 10 10 10' stroke='%2337E5B5' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="gate-body">
+<main class="gate">
+  <canvas id="gate-flow" class="gate-flow" aria-hidden="true"></canvas>
+
+  <section class="gate-card">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text"><b>MIHOMO</b><i>控制台</i></span>
+    </div>
+
+    <h1>验证身份</h1>
+    <p class="gate-sub">面板可以改写内核配置并重启服务，先输入密码。</p>
+
+    <form id="gate-form" autocomplete="on">
+      <label class="field">
+        <span>面板密码</span>
+        <input type="password" name="password" id="password" autocomplete="current-password" required autofocus>
+      </label>
+      <p class="gate-err" id="gate-err" hidden></p>
+      <button class="solid block" type="submit" id="gate-go">登录</button>
+    </form>
+
+    <p class="gate-foot">
+      忘记密码？在设备上执行
+      <code>mihomo_tool.sh</code>
+      选择「重置面板密码」，或运行
+      <code>python3 main.py --set-password 新密码</code>。
+    </p>
+  </section>
+</main>
+<script src="/assets/gate.js"></script>
+</body>
+</html>

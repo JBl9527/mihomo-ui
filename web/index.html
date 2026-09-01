@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Mihomo 控制台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070A0F'/%3E%3Cpath d='M6 21c4 0 5-10 10-10s6 10 10 10' stroke='%2337E5B5' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="app" id="app" hidden>
+
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">
+        <b>MIHOMO</b>
+        <i data-bind="panel_version">控制台</i>
+      </span>
+    </div>
+
+    <nav class="nav" aria-label="主导航">
+      <button class="nav-item is-on" data-goto="dash"><span class="nav-key">01</span>概览</button>
+      <button class="nav-item" data-goto="profiles"><span class="nav-key">02</span>配置</button>
+      <button class="nav-item" data-goto="nodes"><span class="nav-key">03</span>节点</button>
+      <button class="nav-item" data-goto="logs"><span class="nav-key">04</span>日志</button>
+      <button class="nav-item" data-goto="settings"><span class="nav-key">05</span>设置</button>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="link-state" data-bind="link-state">
+        <span class="dot"></span><span data-bind="link-text">连接中</span>
+      </div>
+      <button class="ghost sm" id="logout" hidden>退出登录</button>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <header class="topbar">
+      <button class="ghost icon only-mobile" id="menu" aria-label="切换导航">≡</button>
+      <h1 class="crumb" data-bind="view-title">概览</h1>
+
+      <div class="wire" title="实时上下行速率">
+        <canvas id="spark" width="240" height="38" aria-label="实时速率曲线"></canvas>
+        <div class="wire-read">
+          <span class="up"><i>↑</i><b data-bind="rate-up">0</b></span>
+          <span class="down"><i>↓</i><b data-bind="rate-down">0</b></span>
+        </div>
+      </div>
+
+      <div class="topbar-acts">
+        <button class="ghost sm" id="reload-all" title="重新读取面板数据">刷新</button>
+        <button class="solid sm" id="restart-kernel">重启内核</button>
+      </div>
+    </header>
+
+    <!-- 概览 -->
+    <section class="view is-on" data-view="dash">
+      <div class="strip">
+        <article class="tile">
+          <span class="tile-k">内核进程</span>
+          <b class="tile-v" data-bind="t-service">—</b>
+          <span class="tile-s" data-bind="t-supervisor">进程管理</span>
+        </article>
+        <article class="tile">
+          <span class="tile-k">控制器 API</span>
+          <b class="tile-v" data-bind="t-api">—</b>
+          <span class="tile-s" data-bind="t-port">端口 —</span>
+        </article>
+        <article class="tile">
+          <span class="tile-k">节点 / 策略组</span>
+          <b class="tile-v" data-bind="t-nodes">—</b>
+          <span class="tile-s" data-bind="t-version">内核版本 —</span>
+        </article>
+        <article class="tile">
+          <span class="tile-k">代理入口</span>
+          <b class="tile-v" data-bind="t-port-mixed">—</b>
+          <span class="tile-s" data-bind="t-mode">模式 —</span>
+        </article>
+      </div>
+
+      <div class="grid-2">
+        <section class="panel">
+          <header class="panel-head">
+            <h2>实时吞吐</h2>
+            <span class="panel-note" data-bind="flow-note">直连控制器读取</span>
+          </header>
+          <div class="flow">
+            <canvas id="flow" height="180" aria-label="上下行速率曲线"></canvas>
+            <div class="flow-legend">
+              <span><i class="sw up"></i>上行 <b data-bind="rate-up-2">0</b></span>
+              <span><i class="sw down"></i>下行 <b data-bind="rate-down-2">0</b></span>
+              <span>峰值 <b data-bind="rate-peak">0</b></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <header class="panel-head">
+            <h2>正在运行</h2>
+            <button class="ghost xs" data-goto="profiles">管理配置</button>
+          </header>
+          <div class="active-card" data-bind="active-card">
+            <p class="empty">还没有启用任何配置，先去「配置」导入一份订阅。</p>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel" data-bind="notice-panel" hidden>
+        <header class="panel-head"><h2>需要注意</h2></header>
+        <ul class="notice" data-bind="notice-list"></ul>
+      </section>
+    </section>
+
+    <!-- 配置 -->
+    <section class="view" data-view="profiles">
+      <div class="bar">
+        <div class="bar-l">
+          <button class="solid" id="add-sub">导入订阅</button>
+          <button class="ghost" id="add-yaml">粘贴 YAML</button>
+        </div>
+        <label class="search">
+          <input type="search" id="filter" placeholder="按名称筛选" autocomplete="off">
+        </label>
+      </div>
+      <div class="cards" data-bind="profile-list"></div>
+    </section>
+
+    <!-- 节点 -->
+    <section class="view" data-view="nodes">
+      <div class="bar">
+        <div class="bar-l">
+          <button class="ghost" id="reload-proxies">重新读取</button>
+          <span class="hint" data-bind="proxy-hint">点击节点即可切换，延迟由内核健康检查提供</span>
+        </div>
+      </div>
+      <div class="groups" data-bind="group-list"></div>
+    </section>
+
+    <!-- 日志 -->
+    <section class="view" data-view="logs">
+      <div class="bar">
+        <div class="bar-l">
+          <button class="ghost" id="reload-logs">读取最新</button>
+          <label class="pick">行数
+            <select id="log-lines">
+              <option>100</option><option selected>200</option><option>500</option><option>1000</option>
+            </select>
+          </label>
+          <label class="pick check"><input type="checkbox" id="log-follow"> 自动刷新</label>
+        </div>
+        <span class="hint" data-bind="log-source"></span>
+      </div>
+      <pre class="logs" data-bind="log-text">读取中…</pre>
+    </section>
+
+    <!-- 设置 -->
+    <section class="view" data-view="settings">
+      <div class="grid-2">
+        <section class="panel">
+          <header class="panel-head"><h2>内核控制</h2></header>
+          <div class="rows">
+            <div class="row">
+              <span>进程状态</span>
+              <b data-bind="s-service">—</b>
+            </div>
+            <div class="row">
+              <span>进程管理方式</span>
+              <b data-bind="s-supervisor">—</b>
+            </div>
+            <div class="row">
+              <span>内核目录</span>
+              <b class="mono" data-bind="s-dir">—</b>
+            </div>
+            <div class="row acts">
+              <button class="ghost sm" data-service="start">启动</button>
+              <button class="ghost sm" data-service="stop">停止</button>
+              <button class="ghost sm" data-service="restart">重启</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <header class="panel-head"><h2>面板密码</h2></header>
+          <form class="rows" id="pw-form">
+            <label class="field">
+              <span>当前密码</span>
+              <input type="password" name="old" autocomplete="current-password">
+            </label>
+            <label class="field">
+              <span>新密码（至少 6 位）</span>
+              <input type="password" name="new" autocomplete="new-password" minlength="6" required>
+            </label>
+            <div class="row acts">
+              <button class="solid sm" type="submit">更新密码</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <header class="panel-head"><h2>Zashboard 面板</h2></header>
+          <div class="rows">
+            <p class="tip" data-bind="ui-tip">检测中…</p>
+            <div class="row acts">
+              <button class="ghost sm" id="open-ui">打开 Zashboard</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <header class="panel-head"><h2>关于</h2></header>
+          <div class="rows">
+            <div class="row"><span>面板版本</span><b data-bind="s-version">—</b></div>
+            <div class="row"><span>内核版本</span><b data-bind="s-kernel">—</b></div>
+            <p class="tip">面板以 root 运行并可改写内核配置，请只在内网或经过防火墙限制的端口上开放，务必设置强密码。</p>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="scrim" id="scrim" hidden></div>
+<script src="/assets/app.js"></script>
+</body>
+</html>
