@@ -21,8 +21,9 @@ PANEL_PORT="${PANEL_PORT:-9621}"
 CTRL_PORT="${CTRL_PORT:-9090}"
 REPO="${REPO:-JBl9527/mihomo-ui}"
 BRANCH="${BRANCH:-main}"
-KERNEL_FALLBACK="v1.18.7"
+KERNEL_FALLBACK="v1.19.30"
 TMP="${TMPDIR:-/tmp}/mihomo-tool.$$"
+PY_BIN="${PY_BIN:-}"   # 由 ensure_python 填上；先声明好，set -u 下才能安全引用
 
 # GitHub 直连不通时依次套这些镜像前缀（拼在完整 URL 前面）
 MIRRORS="direct https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/"
@@ -160,7 +161,7 @@ kernel_asset() {
     mipsel|mipsle) echo mipsle-softfloat ;;
     mips)
       # 大小端靠 Python 判，OpenWrt 上 uname 常常统一报 mips
-      if [ "$("$PY_BIN" -c 'import sys;print(sys.byteorder)' 2>/dev/null)" = little ]; then
+      if [ "$("${PY_BIN:-python3}" -c 'import sys;print(sys.byteorder)' 2>/dev/null)" = little ]; then
         echo mipsle-softfloat
       else
         echo mips-softfloat
@@ -251,8 +252,11 @@ install_panel_code() {
   step "拉取面板代码…"
   # 本地就有完整源码时直接用，省得联网（把脚本和源码一起 clone 下来的场景）
   _here=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
-  if [ -n "$_here" ] && [ -f "$_here/main.py" ] && [ -d "$_here/panel" ] && [ -d "$_here/web" ]; then
+  if [ -n "$_here" ] && [ -f "$_here/main.py" ] && [ -d "$_here/panel" ] && [ -d "$_here/web" ] \
+     && [ "$_here" != "$PANEL_DIR" ]; then
     mkdir -p "$PANEL_DIR"
+    # 先清旧目录：升级时删掉的模块留在那儿会被 Python 继续 import
+    rm -rf "$PANEL_DIR/panel" "$PANEL_DIR/web" "$PANEL_DIR/__pycache__"
     ( cd "$_here" && tar cf - main.py panel web ) | ( cd "$PANEL_DIR" && tar xf - ) \
       && { ok "已从本地目录 $_here 复制"; return 0; }
   fi
@@ -430,9 +434,17 @@ install_services() {
 }
 
 # ------------------------------------------------------------ 服务操作
-plain_pid() { # 在无 init 环境里找面板进程
-  { ps ax 2>/dev/null || ps -ef 2>/dev/null; } | grep -F "$PANEL_DIR/main.py" | grep -v grep \
-    | awk '{print $1}' | head -n1
+proc_pid() { # proc_pid <命令行关键字>：直接翻 /proc，不受 ps ax / ps -ef 列序差异影响
+  # 一次 grep 扫完所有 cmdline，比逐个进程 fork 便宜得多；
+  # cmdline 是 NUL 分隔的，所以关键字只能是单个参数（可执行文件路径）。
+  for _hit in $(grep -lF "$1" /proc/[0-9]*/cmdline 2>/dev/null); do
+    _hit=${_hit#/proc/}; _hit=${_hit%/cmdline}
+    # 跳过本脚本自己：关键字可能出现在调用命令行里，会误判成服务在跑
+    [ "$_hit" = "$$" ] && continue
+    [ "$_hit" = "${PPID:-0}" ] && continue
+    echo "$_hit"; return 0
+  done
+  return 1
 }
 
 svc() { # svc <mihomo|mihomo-panel> <start|stop|restart>
@@ -442,13 +454,14 @@ svc() { # svc <mihomo|mihomo-panel> <start|stop|restart>
     procd)   /etc/init.d/"$1" "$2" >/dev/null 2>&1 ;;
     *)
       [ "$1" = mihomo ] && return 0   # 无 init 时内核由面板自己管
-      _pid=$(plain_pid)
       case "$2" in
-        stop|restart) [ -n "$_pid" ] && kill "$_pid" 2>/dev/null; sleep 1 ;;
+        stop|restart)
+          _pid=$(proc_pid "$PANEL_DIR/main.py") && kill "$_pid" 2>/dev/null
+          sleep 1 ;;
       esac
       case "$2" in
         start|restart)
-          [ -n "$(plain_pid)" ] && return 0
+          proc_pid "$PANEL_DIR/main.py" >/dev/null && return 0
           nohup "$STATE_DIR/start-panel.sh" >> "$STATE_DIR/panel.log" 2>&1 &
           sleep 1 ;;
       esac ;;
@@ -460,30 +473,26 @@ svc_state() { # svc_state <服务名> → 运行中 / 已停止
   case "$(init_kind)" in
     systemd) systemctl is-active --quiet "$1" && { echo 运行中; return; } ;;
     openrc)  rc-service "$1" status >/dev/null 2>&1 && { echo 运行中; return; } ;;
-    procd)
-      _key=$MIHOMO_BIN; [ "$1" = mihomo-panel ] && _key=$PANEL_DIR/main.py
-      { ps ax 2>/dev/null || ps -ef 2>/dev/null; } | grep -F "$_key" | grep -qv grep \
-        && { echo 运行中; return; } ;;
     *)
+      # procd 与无 init 都靠进程判断：init.d status 的实现各家不一样，不可靠
       _key=$MIHOMO_BIN; [ "$1" = mihomo-panel ] && _key=$PANEL_DIR/main.py
-      { ps ax 2>/dev/null || ps -ef 2>/dev/null; } | grep -F "$_key" | grep -qv grep \
-        && { echo 运行中; return; } ;;
+      proc_pid "$_key" >/dev/null && { echo 运行中; return; } ;;
   esac
   echo 已停止
 }
 
 lan_ip() {
-  _ip=$("$PY_BIN" - <<'PY' 2>/dev/null
-import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-try:
-    s.connect(("223.5.5.5", 53)); print(s.getsockname()[0])
-except OSError:
-    print("127.0.0.1")
-finally:
-    s.close()
-PY
-)
+  # 复用面板里那份挑地址的逻辑：透明网关的默认路由指向 TUN，
+  # 直接 UDP connect 会拿到 fake-ip（198.18.0.1），照着它访问面板打不开。
+  _ip=$("${PY_BIN:-python3}" -c 'import sys;sys.path.insert(0,sys.argv[1]);from panel.util import local_ip;print(local_ip())' \
+    "$PANEL_DIR" 2>/dev/null)
+  case "$_ip" in
+    ""|198.18.*|198.19.*|127.*|169.254.*) ;;
+    *) echo "$_ip"; return ;;
+  esac
+  _ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{split($4,a,"/");print a[1]}' \
+    | grep -Ev '^(198\.1[89]\.|127\.|169\.254\.)' \
+    | grep -E '^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)' | head -n1)
   [ -n "$_ip" ] && echo "$_ip" || echo 127.0.0.1
 }
 
@@ -714,7 +723,8 @@ menu() {
 case "${1:-menu}" in
   install|update)  do_install ;;
   status)          show_status ;;
-  password)        [ -n "${2:-}" ] && reset_password "$2" || { show_password; } ;;
+  password)
+    if [ -n "${2:-}" ]; then reset_password "$2"; else show_password; fi ;;
   set-password)    reset_password "${2:-}" ;;
   start)           ensure_python; svc mihomo start; svc mihomo-panel start; show_status ;;
   stop)            svc mihomo-panel stop; svc mihomo stop; ok "已停止" ;;
@@ -722,6 +732,6 @@ case "${1:-menu}" in
   uninstall)       do_uninstall ;;
   self-update)     self_update ;;
   menu)            menu ;;
-  -h|--help|help)  sed -n '2,14p' "$0" ;;
+  -h|--help|help)  sed -n '2,13p' "$0" ;;
   *) die "未知参数：$1（试试 install / status / password / restart / uninstall）" ;;
 esac
