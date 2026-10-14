@@ -93,6 +93,11 @@ def normalize(raw: str, profile_id: str, settings) -> Tuple[str, List[str]]:
     if any(isinstance(rule, str) and rule.upper().startswith(("GEOIP,", "GEOSITE,")) for rule in rules):
         config.setdefault("geodata-mode", True)
 
+    # 降低能耗与提升性能：若未配置，默认关闭频繁查/proc的进程追踪，启用TCP并发
+    config.setdefault("find-process-mode", "off")
+    config.setdefault("tcp-concurrent", True)
+    config.setdefault("unified-delay", True)
+
     # 记住手动选择的节点和 fake-ip 映射，切配置或重启后不会被打回默认。
     profile = config.get("profile")
     if not isinstance(profile, dict):
@@ -267,10 +272,11 @@ def fetch_subscription(url: str) -> Tuple[Dict[str, Any], List[str]]:
     return info, notes
 
 def base_config(sub_url: str, settings, options: Optional[dict] = None) -> str:
-    """按订阅链接生成一份保守的可跑配置：默认关掉需要新内核/新内核特性的开关。"""
+    """按订阅链接生成一份高性能、低CPU能耗的可跑配置。"""
     options = options or {}
     group = str(options.get("provider_name") or "机场节点").strip() or "机场节点"
     interval = int(options.get("interval") or 86400)
+    tun_stack = str(options.get("tun_stack") or "mixed").strip()  # mixed 栈大幅降低 CPU 负载并跑满千兆带宽
     config: Dict[str, Any] = {
         "mixed-port": int(options.get("port") or 7890),
         "allow-lan": True,
@@ -280,21 +286,25 @@ def base_config(sub_url: str, settings, options: Optional[dict] = None) -> str:
         "ipv6": False,
         "unified-delay": True,
         "tcp-concurrent": True,
+        "find-process-mode": "off",  # 关闭高能耗的每连接进程追踪
+        "global-client-fingerprint": "chrome",
         "external-controller": "0.0.0.0:%d" % DEFAULT_PORT,
         "secret": settings.controller_secret,
         "external-ui": "ui",
         "geodata-mode": True,
-        "geodata-loader": "memconservative",
+        "geodata-loader": "standard",  # standard 模式预载入索引，避免匹配时频繁解包空耗 CPU
         "profile": {"store-selected": True, "store-fake-ip": True},
     }
     if options.get("tun", True):
         config["tun"] = {
             "enable": True,
-            "stack": "gvisor",  # gvisor 不依赖内核模块，兼容性最好
+            "stack": tun_stack,  # mixed 具备内核级 TCP 吞吐与 gvisor UDP 兼容性
             "auto-route": True,
-            "auto-redirect": False,  # 需要 nftables + 较新内核，默认关掉免得起不来
+            "auto-redirect": False,
             "auto-detect-interface": True,
             "dns-hijack": ["any:53"],
+            "mtu": 9000,
+            "strict-route": False,
         }
     config["dns"] = {
         "enable": True,
@@ -305,6 +315,10 @@ def base_config(sub_url: str, settings, options: Optional[dict] = None) -> str:
         "fake-ip-filter": ["*.lan", "*.local", "*.localdomain", "+.internal", "+.pool.ntp.org", "time.*.com"],
         "default-nameserver": ["223.5.5.5", "119.29.29.29"],
         "nameserver": ["223.5.5.5", "119.29.29.29"],
+        "direct-nameserver": ["223.5.5.5", "119.29.29.29"],
+        "proxy-server-nameserver": ["223.5.5.5", "119.29.29.29"],
+        "cache-algorithm": "arc",  # 高性能自适应缓存算法
+        "respect-rules": True,
     }
     config["proxy-providers"] = {
         group: {

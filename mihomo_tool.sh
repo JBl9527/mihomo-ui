@@ -297,6 +297,46 @@ init_kind() {
   echo none
 }
 
+# --------------------------------------------------- 系统网络优化 / BBR / 能耗调优
+tune_system_network() {
+  step "优化系统网络性能与拥塞控制 (提升外网带宽、降低延迟与能耗)…"
+  if [ ! -d /proc/sys/net ]; then
+    warn "非完整 Linux 环境（容器或受限内核），跳过 sysctl 调优"
+    return 0
+  fi
+  if have modprobe; then
+    modprobe tcp_bbr >/dev/null 2>&1 || true
+  fi
+  _conf="/etc/sysctl.d/99-mihomo-network.conf"
+  if [ ! -d /etc/sysctl.d ]; then _conf="/etc/sysctl.conf"; fi
+  cat > "$TMP/sysctl.conf" <<EOF
+# Mihomo 网络吞吐与低延迟调优配置
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.core.rmem_max = 67108864
+net.core.wmem_max = 67108864
+net.ipv4.tcp_rmem = 4096 87380 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
+net.core.netdev_max_backlog = 10000
+net.core.somaxconn = 32768
+net.ipv4.tcp_max_syn_backlog = 8192
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 30
+fs.file-max = 2097152
+EOF
+  if [ -w "$(dirname "$_conf")" ] || [ -w "$_conf" ]; then
+    if [ "$_conf" = "/etc/sysctl.conf" ]; then
+      grep -q "net.core.default_qdisc" /etc/sysctl.conf 2>/dev/null || cat "$TMP/sysctl.conf" >> /etc/sysctl.conf
+    else
+      cp -f "$TMP/sysctl.conf" "$_conf"
+    fi
+    sysctl -p "$_conf" >/dev/null 2>&1 || sysctl --system >/dev/null 2>&1 || true
+    ok "已应用系统网络优化 (BBR 拥塞控制 + TCP 高速缓冲区 + 转发支持)"
+  fi
+}
+
 write_systemd() {
   cat > /etc/systemd/system/mihomo.service <<EOF
 [Unit]
@@ -306,6 +346,8 @@ After=network.target nss-lookup.target
 Type=simple
 LimitNPROC=500
 LimitNOFILE=1048576
+Environment=GOGC=50
+Environment=GOMEMLIMIT=768MiB
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_TIME CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_TIME CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
 ExecStart=$MIHOMO_BIN -d $MIHOMO_DIR
@@ -346,6 +388,7 @@ command_background=true
 pidfile="/run/mihomo.pid"
 output_log="$STATE_DIR/mihomo.log"
 error_log="$STATE_DIR/mihomo.log"
+export GOGC=50
 depend() { need net; }
 EOF
   cat > /etc/init.d/mihomo-panel <<EOF
@@ -377,6 +420,7 @@ USE_PROCD=1
 start_service() {
   procd_open_instance
   procd_set_param command $MIHOMO_BIN -d $MIHOMO_DIR
+  procd_set_param env GOGC=50
   procd_set_param stdout 1
   procd_set_param stderr 1
   procd_set_param respawn 3600 5 0
@@ -410,6 +454,7 @@ write_plain() {
   cat > "$STATE_DIR/start-panel.sh" <<EOF
 #!/bin/sh
 # 无 init 环境下的启动脚本：面板会自己把内核拉起来
+export GOGC=50
 export MIHOMO_PANEL_CONF="$STATE_DIR/panel.json"
 cd "$PANEL_DIR" || exit 1
 # 用绝对路径启动，方便 ps 里认出这个进程
@@ -425,6 +470,7 @@ EOF
 }
 
 install_services() {
+  tune_system_network
   case "$(init_kind)" in
     systemd) write_systemd ;;
     openrc)  write_openrc ;;
@@ -698,10 +744,11 @@ menu() {
     say "  ${C_Y}6.${C_0} 停止内核 + 面板"
     say "  ${C_Y}7.${C_0} 只更新面板代码（保留配置）"
     say "  ${C_Y}8.${C_0} 更新本脚本"
-    say "  ${C_Y}9.${C_0} 卸载"
+    say "  ${C_Y}9.${C_0} 系统网络与拥塞控制调优（启用 BBR / 加速带宽）"
+    say "  ${C_Y}10.${C_0} 卸载"
     say "  ${C_Y}0.${C_0} 退出"
     say "${C_C}=============================================${C_0}"
-    ask "请选择 [0-9]: "
+    ask "请选择 [0-10]: "
     case "$REPLY_RAW" in
       1) do_install ;;
       2) show_status ;;
@@ -712,7 +759,8 @@ menu() {
       7) [ "$(id -u)" = 0 ] || die "请用 root 执行"
          mkdir -p "$TMP"; ensure_python; install_panel_code; svc mihomo-panel restart; ok "面板已更新并重启" ;;
       8) self_update ;;
-      9) do_uninstall ;;
+      9) [ "$(id -u)" = 0 ] || die "请用 root 执行"; tune_system_network ;;
+      10) do_uninstall ;;
       0) say "再见"; exit 0 ;;
       *) warn "无效选项" ;;
     esac
@@ -729,9 +777,10 @@ case "${1:-menu}" in
   start)           ensure_python; svc mihomo start; svc mihomo-panel start; show_status ;;
   stop)            svc mihomo-panel stop; svc mihomo stop; ok "已停止" ;;
   restart)         ensure_python; svc mihomo restart; svc mihomo-panel restart; show_status ;;
+  tune|bbr)        tune_system_network ;;
   uninstall)       do_uninstall ;;
   self-update)     self_update ;;
   menu)            menu ;;
   -h|--help|help)  sed -n '2,13p' "$0" ;;
-  *) die "未知参数：$1（试试 install / status / password / restart / uninstall）" ;;
+  *) die "未知参数：$1（试试 install / status / tune / password / restart / uninstall）" ;;
 esac

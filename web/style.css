@@ -300,8 +300,10 @@ select { appearance: none; padding-right: 26px; background-image: linear-gradien
 .node-delay.fast { color: var(--mint); }
 .node-delay.mid { color: var(--amber); }
 .node-delay.slow { color: var(--red); }
+.node.is-hidden { display: none !important; }
 .group.locked .node { cursor: default; }
 .group.locked .node:hover { border-color: var(--line); background: #0A1016; }
+.flow canvas, .wire canvas { will-change: contents; }
 
 /* ---------------------------------------------------------------- 日志 */
 .logs {

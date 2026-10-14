@@ -22,6 +22,7 @@ sh mihomo_tool.sh
 ```sh
 sh mihomo_tool.sh install        # 安装 / 覆盖更新
 sh mihomo_tool.sh status         # 状态、地址、配置份数
+sh mihomo_tool.sh tune           # 系统网络与拥塞控制调优（启用 BBR / 加速带宽）
 sh mihomo_tool.sh password       # 查看初始密码
 sh mihomo_tool.sh password 新密码 # 重置密码
 sh mihomo_tool.sh restart|stop|start

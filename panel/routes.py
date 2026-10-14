@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import secrets
+import time
 from typing import List, Optional
 from urllib.parse import quote
 
@@ -27,6 +28,7 @@ class Api:
         self.supervisor = supervisor_mod.detect(settings)
         self.store = profiles.Store(settings, self.supervisor)
         self.guard = auth.LoginGuard()
+        self._counts_cache = (0, 0, "", 0.0)  # (nodes, groups, version, ts)
 
     # ------------------------------------------------------------ 鉴权
     def before(self, request: Request, public: bool) -> Optional[Response]:
@@ -104,23 +106,30 @@ class Api:
     def status(self, request: Request) -> dict:
         config = self._running_config()
         controller = self._controller(config)
-        nodes = groups = 0
-        version = ""
+        now = time.monotonic()
+        nodes, groups, version, ts = self._counts_cache
         error = ""
         api_ready = False
         try:
-            version = str((controller.version() or {}).get("version") or "")
-            payload = controller.proxies()
+            if now - ts > 15.0 or not version:
+                version = str((controller.version() or {}).get("version") or "")
+                payload = controller.proxies()
+                nodes = groups = 0
+                for name, item in payload.items():
+                    if not isinstance(item, dict):
+                        continue
+                    if str(item.get("type") or "").lower() in _GROUP_TYPES:
+                        groups += 1
+                    elif name not in _BUILTIN:
+                        nodes += 1
+                self._counts_cache = (nodes, groups, version, now)
+            else:
+                # 缓存期内快速轻量心跳检查
+                controller.version()
             api_ready = True
-            for name, item in payload.items():
-                if not isinstance(item, dict):
-                    continue
-                if str(item.get("type") or "").lower() in _GROUP_TYPES:
-                    groups += 1
-                elif name not in _BUILTIN:
-                    nodes += 1
         except mihomo.ControllerError as exc:
             error = str(exc)
+            self._counts_cache = (0, 0, "", 0.0)
         return {
             "panel_version": config_mod.VERSION,
             "supervisor": self.supervisor.name,
@@ -233,10 +242,12 @@ class Api:
         return self._finish(profile_id, data, notes, "YAML 配置已保存")
 
     def activate_profile(self, request: Request, pid: str) -> dict:
+        self._counts_cache = (0, 0, "", 0.0)
         data = request.json() if request.body else {}
         return self.store.activate(pid, skip_check=bool(data.get("skip_check")))
 
     def refresh_profile(self, request: Request, pid: str) -> dict:
+        self._counts_cache = (0, 0, "", 0.0)
         return self.store.refresh(pid)
 
     def duplicate_profile(self, request: Request, pid: str) -> dict:
@@ -259,6 +270,7 @@ class Api:
         )
         content_changed = raw_yaml is not None or bool(sub_url)
         if data.get("activate") or (content_changed and pid == self.store.active_id()):
+            self._counts_cache = (0, 0, "", 0.0)
             outcome = self.store.activate(pid, skip_check=True)
             return {"status": "success", "msg": outcome["msg"], "notes": util.dedupe(notes + outcome["notes"])}
         return {"status": "success", "msg": "配置已保存", "notes": util.dedupe(notes)}
@@ -282,6 +294,7 @@ class Api:
 
     # ------------------------------------------------------------ 内核控制
     def service(self, request: Request) -> dict:
+        self._counts_cache = (0, 0, "", 0.0)
         action = str((request.json() if request.body else {}).get("action") or "restart").lower()
         if action == "restart":
             return self.store.restart()
@@ -292,6 +305,7 @@ class Api:
         raise HTTPError(400, "不支持的操作：%s" % action)
 
     def restart(self, request: Request) -> dict:
+        self._counts_cache = (0, 0, "", 0.0)
         return self.store.restart()
 
     def boot(self) -> None:

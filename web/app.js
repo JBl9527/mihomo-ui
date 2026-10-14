@@ -316,6 +316,15 @@
       + '<span class="group-now">' + esc(group.now || "—") + "</span></header>"
       + '<div class="nodes">' + nodes + "</div></section>";
   }
+  function applyNodeFilter() {
+    var filterInput = $("#node-filter");
+    var kw = (filterInput && filterInput.value || "").trim().toLowerCase();
+    $$(".group .node").forEach(function (el) {
+      var name = (el.dataset.node || "").toLowerCase();
+      el.classList.toggle("is-hidden", !!kw && name.indexOf(kw) === -1);
+    });
+  }
+
   function loadGroups() {
     var box = bind("group-list");
     return api("/api/proxies").then(function (data) {
@@ -325,6 +334,7 @@
         return;
       }
       box.innerHTML = state.groups.map(groupCard).join("");
+      applyNodeFilter();
     }).catch(function (exc) {
       box.innerHTML = '<div class="panel"><div class="rows"><p class="empty">' + esc(exc.message)
         + "</p></div></div>";
@@ -339,17 +349,31 @@
       toast("warn", "这个策略组不支持手动选择", "url-test / fallback 由内核按延迟自动决定");
       return;
     }
+    var groupName = group.dataset.group;
+    var nodeName = button.dataset.node;
     busy(button, true);
-    api("/api/proxies/" + encodeURIComponent(group.dataset.group), {
+    api("/api/proxies/" + encodeURIComponent(groupName), {
       method: "PUT",
-      body: { name: button.dataset.node }
+      body: { name: nodeName }
     }).then(function (result) {
       report(result, "已切换节点");
-      loadGroups();
+      // 局部更新 DOM，避免全量重建卡顿
+      var currentOn = group.querySelector(".node.on");
+      if (currentOn) { currentOn.classList.remove("on"); }
+      button.classList.add("on");
+      var nowElem = group.querySelector(".group-now");
+      if (nowElem) { nowElem.textContent = nodeName; }
+      state.groups.forEach(function (g) {
+        if (g.name === groupName) { g.now = nodeName; }
+      });
     }).catch(fail).then(function () { busy(button, false); });
   });
 
   $("#reload-proxies").addEventListener("click", loadGroups);
+  var filterNodeInput = $("#node-filter");
+  if (filterNodeInput) {
+    filterNodeInput.addEventListener("input", applyNodeFilter);
+  }
 
   // ------------------------------------------------------------ 日志
   function loadLogs() {
@@ -476,7 +500,17 @@
       nums.style.transform = "translateY(" + -input.scrollTop + "px)";
     }
 
-    input.addEventListener("input", function () { paint(); sync(); });
+    var paintTimer = null;
+    function debouncedPaint() {
+      sync();
+      if (paintTimer) { clearTimeout(paintTimer); }
+      paintTimer = setTimeout(function () {
+        paintTimer = null;
+        paint();
+      }, 70);
+    }
+
+    input.addEventListener("input", debouncedPaint);
     input.addEventListener("scroll", sync);
     input.addEventListener("keydown", function (event) {
       if (event.key !== "Tab") { return; }
@@ -505,10 +539,10 @@
       + '<div class="grid-2"><label class="field"><span>订阅自动更新（小时）</span>'
       + '<input type="text" name="interval" value="24" inputmode="numeric"></label>'
       + '<div class="field"><span>可选项</span>'
-      + '<label class="pick check"><input type="checkbox" name="tun" checked> 开启 TUN 全局接管</label>'
+      + '<label class="pick check"><input type="checkbox" name="tun" checked> 开启 TUN 全局接管（推荐 mixed 栈）</label>'
       + '<label class="pick check"><input type="checkbox" name="activate" checked> 导入后立即启用</label>'
       + '<label class="pick check"><input type="checkbox" name="skip"> 跳过内核校验</label></div></div>'
-      + '<p class="tip">面板会生成一份保守的可跑配置：分流走 GEOSITE/GEOIP，TUN 用 gvisor 栈，'
+      + '<p class="tip">面板会生成高性能配置：分流走 GEOSITE/GEOIP，TUN 默认 mixed 高性能栈（大幅提升吞吐，降低CPU能耗），'
       + '订阅缓存按配置隔离存放，切换配置立刻生效。导入后可以随时在编辑器里改。</p>'
       + "</div>"
       + '<div class="sheet-foot"><span class="spacer"></span>'
@@ -534,7 +568,8 @@
             provider_name: read("provider").value.trim() || "机场节点",
             port: parseInt(read("port").value, 10) || 7890,
             interval: Math.max(300, (parseInt(read("interval").value, 10) || 24) * 3600),
-            tun: read("tun").checked
+            tun: read("tun").checked,
+            tun_stack: "mixed"
           }
         }
       }).then(function (result) {
@@ -824,7 +859,17 @@
     series(view, 0, max, "#37E5B5", "3A");
   }
 
+  var paintRaf = null;
+  function schedulePaint() {
+    if (paintRaf || document.hidden) { return; }
+    paintRaf = requestAnimationFrame(function () {
+      paintRaf = null;
+      paintAll();
+    });
+  }
+
   function paintAll() {
+    if (document.hidden) { return; }
     paint($("#spark"), false);
     if (state.view === "dash") { paint($("#flow"), true); }
   }
@@ -838,10 +883,10 @@
     put("rate-up-2", rate(up));
     put("rate-down-2", rate(down));
     put("rate-peak", rate(peak));
-    paintAll();
+    schedulePaint();
   }
 
-  window.addEventListener("resize", paintAll);
+  window.addEventListener("resize", function () { schedulePaint(); });
   function stopSocket() {
     if (retry) { clearTimeout(retry); retry = null; }
     if (socket) {
@@ -883,7 +928,12 @@
   }
 
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden) { stopSocket(); } else { openSocket(); refreshAll(); }
+    if (document.hidden) {
+      stopSocket();
+    } else {
+      openSocket();
+      refreshAll();
+    }
   });
   // ------------------------------------------------------------ 启动
   function boot() {
@@ -897,7 +947,7 @@
       goto((location.hash || "").slice(1) || "dash");
       refreshAll();
       openSocket();
-      setInterval(function () { if (!document.hidden) { loadStatus(); } }, 7000);
+      setInterval(function () { if (!document.hidden) { loadStatus(); } }, 10000);
       setInterval(function () { if (!document.hidden && state.view === "profiles") { loadProfiles(); } }, 30000);
     }).catch(function (exc) {
       app.hidden = false;

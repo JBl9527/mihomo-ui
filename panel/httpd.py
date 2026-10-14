@@ -147,15 +147,30 @@ class Router:
             return handler, params, public
         raise HTTPError(405 if allowed else 404, "接口不存在" if not allowed else "请求方法不被支持")
 
+_FILE_CACHE: Dict[str, Tuple[float, bytes]] = {}
+
 def file_response(path: Path, request: Optional[Request] = None) -> Response:
     try:
         stat = path.stat()
-        raw = path.read_bytes()
     except OSError:
         raise HTTPError(404, "文件不存在: %s" % path.name)
     etag = '"%x-%x"' % (int(stat.st_mtime), stat.st_size)
     if request is not None and request.headers.get("if-none-match") == etag:
         return Response(304, b"", "text/plain", {"ETag": etag})
+
+    # 小于 2MB 的静态文件加轻量级内存缓存，避免频繁从慢速存储/TF卡读取
+    cache_key = str(path.resolve())
+    cached = _FILE_CACHE.get(cache_key)
+    if cached and cached[0] == stat.st_mtime:
+        raw = cached[1]
+    else:
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            raise HTTPError(404, "文件无法读取: %s" % path.name)
+        if len(raw) <= 2 * 1024 * 1024:
+            _FILE_CACHE[cache_key] = (stat.st_mtime, raw)
+
     guessed = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     if guessed.startswith("text/") or guessed in ("application/javascript", "application/json"):
         guessed += "; charset=utf-8"
